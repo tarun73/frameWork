@@ -1,0 +1,12 @@
+{
+  "databaseName":"nanonets",
+  "modelCollectionName":"models",
+  "experimentCollectionName":"experiments",
+  "trainingImagesPath":"/home/tarunr/TrainingImages/",
+  "testImagesPath":"/home/tarunr/TestImages/",
+  "host":"localhost",
+  "port":27017,
+  "pika_id":"admin",
+  "pika_password":"password",
+  "pika_host":"localhost"
+}

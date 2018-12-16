@@ -1,0 +1,7 @@
+MODEL_NAME = 'model_name'
+EXPERIMENT_NAME = 'experiment_name'
+LEARNING_RATE = 'learning_rate'
+NUMBER_OF_LAYERS = 'num_layers'
+NUMBER_OF_STEPS = 'num_steps'
+TRAINING_SET_NUM = 'num_training_set'
+TRAINING_QUEUE_NAME = 'trainingQueue'
