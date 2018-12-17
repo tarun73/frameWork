@@ -108,17 +108,12 @@ def doTraining(ch, method, properties, body):
     print("completed experiment")
     return
 
-def consumeQueue(type, prefetch=1):
+def consumeQueue():
     rabbitmqChannel = rabbitmqDb.getRabbitmqConsumeChannel(config.get(config.PIKA_HOST),C.TRAINING_QUEUE_NAME)
     rabbitmqChannel.basic_consume(doTraining,queue=C.TRAINING_QUEUE_NAME)
     rabbitmqChannel.start_consuming()
     return
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Worker')
-    parser.add_argument('-t', '--type', help='Type of processing',
-                        default=0)
-    args = vars(parser.parse_args())
-    workerType = int(args['type'])
-    print('Starting worker process of type: '+str(workerType))
-    consumeQueue(workerType)
+    print('Starting worker process')
+    consumeQueue()
