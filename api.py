@@ -37,28 +37,37 @@ def publishInQueue(ObjToPublish,channel,routingKey,delivery_mode):
 def makeQueueObject(modelName,experimentName,datasetName):
     return {"modelName":modelName,"experimentName":experimentName,"datasetName":datasetName}
 
+def checkIfModelExists(modelName,modelCollection):
+    flag = True
+    if modelCollection.find_one({"_id":modelName}) is None:
+        flag = False
+    return flag
+
 def trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel,datasetCollection,datasetName=None):
-    try:
-        if datasetName is not None:
-            makeTrainingData(modelName,datasetName,modelCollection,datasetCollection)
-        queueObj = makeQueueObject(modelName,experimentName,datasetName)
-        status = publishInQueue(queueObj, pikapublishChannel, C.TRAINING_QUEUE_NAME, delivery_mode=2)
-        experimentCollection.update({"modelName":modelName,
-                                     "experimentName":experimentName,
-                                     },
-                                    {
-                                        "$push":{
-                                            "accuracies": {"datasetName":datasetName,
-                                                           "status":1,
-                                                           "accuracy":0}
-                                        },
-                                       "$set":{
-                                        "status": 1
-                                       }
-                                    })
-        result = {'status': 'ok', 'message': 'training for exp started'}
-    except Exception as e:
-        result = {'status': 'ERROR', 'message': e}
+    if checkIfModelExists(modelName,modelCollection):
+        try:
+            if datasetName is not None:
+                makeTrainingData(modelName,datasetName,modelCollection,datasetCollection)
+            queueObj = makeQueueObject(modelName,experimentName,datasetName)
+            status = publishInQueue(queueObj, pikapublishChannel, C.TRAINING_QUEUE_NAME, delivery_mode=2)
+            experimentCollection.update({"modelName":modelName,
+                                         "experimentName":experimentName,
+                                         },
+                                        {
+                                            "$push":{
+                                                "accuracies": {"datasetName":datasetName,
+                                                               "status":1,
+                                                               "accuracy":0}
+                                            },
+                                           "$set":{
+                                            "status": 1
+                                           }
+                                        })
+            result = {'status': 'ok', 'message': 'training for exp started'}
+        except Exception as e:
+            result = {'status': 'ERROR', 'message': e}
+    else:
+        result = {'status': 'ERROR', 'message': 'Model doesnot exist'}
     return result
 
 def createDefaultExperiments(modelName,modelCollection,experimentCollection):
@@ -77,7 +86,6 @@ def createDefaultExperiments(modelName,modelCollection,experimentCollection):
 
 def createModel(modelName, modelCollection, experimentCollection):
     objectToInsert = {'_id':modelName,
-                      'experiments':[],
                       'trainingImagesPath':config.get(config.TRAININGIMAGESPATH)+str(modelName)+'/',
                       'numberOfTrainingImages':0,
                       'bestAccuracy':0,
@@ -137,8 +145,7 @@ def insertTrainingImage(modelName,image,modelCollection,datasetCollection,datase
         print(e)
         return {'status': 'ERROR', 'message': e}
 
-def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSteps,modelCollection,
-                     experimentCollection):
+def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSteps,modelCollection,experimentCollection):
     """
 
     :param modelName:
@@ -163,14 +170,13 @@ def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSte
                     'numOfSteps': int(numOfSteps),
                     'numOfLayers': int(numOfLayers),
                     'modelName': modelName,
-                    'accuracy': 0,
                     'accuracies': [],
                     'status': 0
                 }
                 insertedObjId = experimentCollection.insert_one(expObj)
                 return {'status': 'ok', 'message': 'New experiment Added'}
             else:
-                return {'status': 'ok', 'message': 'No Model Found'}
+                return {'status': 'ERROR', 'message': 'No Model Found'}
     except Exception as e:
         print(e)
         return {'status': 'ERROR', 'message': e}
@@ -189,92 +195,165 @@ def runTest(modelName,image,modelCollection,experimentCollection):
     :param image:
     :return:
     """
-    modelObj = modelCollection.find_one({"_id":modelName})
-    bestexperimentName = modelObj['bestExperimentName']
-    if bestexperimentName is not None:
-        expObj = experimentCollection.find_one({"modelName":modelName,
-                                                "experimentName":bestexperimentName})
-        name = str(randint(1000000, 9999999))
-        testImagesPath =config.get(config.TESTIMAGESPATH)+str(modelName)
-        if not os.path.isdir(testImagesPath):
-            os.mkdir(testImagesPath)
-        imagePath = testImagesPath+'/'+name+'.jpg'
-        image.save(imagePath)
-        learningRate = str(expObj['learningRate'])
-        steps = str(expObj["numOfSteps"])
-        layers = str(expObj["numOfLayers"])
-        output = check_output(
-            ['python', 'test.py', '--i', learningRate, '--j', layers, '--k', steps, '--image', imagePath])
-        accuracy = output.split(',')[4][13:-2]
-        return {"Status": "ok","body":{"accuracy":accuracy, "learningRate": learningRate, "steps": steps,"layers":layers,
-                "Experiment":bestexperimentName}}
+    if checkIfModelExists(modelName,modelCollection):
+        try:
+            modelObj = modelCollection.find_one({"_id":modelName})
+            bestexperimentName = modelObj['bestExperimentName']
+            if bestexperimentName is not None:
+                expObj = experimentCollection.find_one({"modelName":modelName,
+                                                        "experimentName":bestexperimentName})
+                name = str(randint(1000000, 9999999))
+                testImagesPath =config.get(config.TESTIMAGESPATH)+str(modelName)
+                if not os.path.isdir(testImagesPath):
+                    os.mkdir(testImagesPath)
+                imagePath = testImagesPath+'/'+name+'.jpg'
+                image.save(imagePath)
+                learningRate = str(expObj['learningRate'])
+                steps = str(expObj["numOfSteps"])
+                layers = str(expObj["numOfLayers"])
+                output = check_output(
+                    ['python', 'test.py', '--i', learningRate, '--j', layers, '--k', steps, '--image', imagePath])
+                accuracy = output.split(',')[4][13:-2]
+                result =  {"Status": "ok","body":{"accuracy":accuracy, "learningRate": learningRate, "steps": steps,"layers":layers,
+                        "Experiment":bestexperimentName}}
+            else:
+                result = {"Status":"ERROR","message":"no experiment done yet"}
+        except Exception as e:
+            result = {"status" : "ERROR", "message":e}
     else:
-        return {"Status":"ok","body":{"Experiment":bestexperimentName}}
+        result = {'status': 'ERROR', 'message': 'Model doesnot exist'}
+    return result
 
-def getAllAccuracies(modelName, experimentCollection, modelCollection,bestAccuracyFlag=False):
-    finalObj = {
-        "bestaccuracy":0,
-        "bestExperimentName":None,
-    }
-    modelObj = modelCollection.find_one({
-        "_id": modelName
-    })
-    finalObj["bestExperimentName"] = modelObj["bestExperimentName"]
-    finalObj["bestaccuracy"] = modelObj["bestAccuracy"]
-    if "bestdatasetName" in modelObj.keys():
-        finalObj["bestdataSet"] = modelObj["trainingset"]
-    if not bestAccuracyFlag:
-        finalObj["AllExperiments"] = []
-        experimentObjList = experimentCollection.find({
-            "modelName":modelName
+def getAllAccuracies(modelName, experimentCollection, modelCollection,experimentName=None,bestAccuracyFlag=False):
+    if checkIfModelExists(modelName,modelCollection):
+        if experimentName is not None:
+            expObj = experimentCollection.find_one({"modelName":modelName,"experimentName":experimentName})
+            if expObj is None:
+                result = {"status":"ERROR","message":"no experiment with this name exists"}
+            else:
+                if bestAccuracyFlag :
+                    finalObj = {
+                        "bestaccuracy": 0,
+                        "experiment": None,
+                        "bestDataset": None,
+                    }
+                    bestAccuracy = 0
+                    bestDataset = None
+                    for acc in expObj['accuracies']:
+                        if acc["status"] == 2:
+                            if acc["accuracy"] > bestAccuracy:
+                                bestAccuracy = acc["accuracy"]
+                                bestDataset = acc["datasetName"]
+                    finalObj["bestaccuracy"] = bestAccuracy
+                    finalObj["experiment"] = experimentName
+                    finalObj["bestDataset"] = bestDataset
+                    result = {"status":"ok","body":finalObj}
+                else:
+                    #all accuracies in experiment
+                    finalObj = {
+                        "AllExperiments":[]
+                    }
+                    experimentObjList = [expObj]
+                    for expObj in experimentObjList:
+                        smallObj = {}
+                        smallObj["accuracies"] = []
+                        if len(expObj["accuracies"]) > 0:
+                            for acc in expObj['accuracies']:
+                                if acc["status"] == 2:
+                                    smallObj["accuracies"].append({"datasetName":acc["datasetName"],"accuracy":acc["accuracy"]})
+                        smallObj["experimentName"]= expObj["experimentName"]
+                        smallObj["layers"]= expObj["numOfLayers"]
+                        smallObj["steps"]= expObj["numOfSteps"]
+                        smallObj["learningRate"]= expObj["learningRate"]
+                        # if "status" in expObj.keys() and expObj["status"] == 2:
+                        #     smallObj["accuracy"]= expObj["accuracy"]
+                        if len(smallObj["accuracies"])>0:
+                            finalObj["AllExperiments"].append(smallObj)
+                    result = {"status":"ok","body":finalObj}
+        else:
+            finalObj = {
+                "bestaccuracy":0,
+                "bestExperiment":None,
+                "bestDataset":None
+            }
+            modelObj = modelCollection.find_one({
+                "_id": modelName
+            })
+            finalObj["bestExperiment"] = modelObj["bestExperimentName"]
+            finalObj["bestaccuracy"] = modelObj["bestAccuracy"]
+            if "trainingset" in modelObj.keys():
+                finalObj["bestDataset"] = modelObj["trainingset"]
+            if not bestAccuracyFlag:
+                finalObj["AllExperiments"] = []
+                experimentObjList = experimentCollection.find({
+                    "modelName":modelName
+                })
+                for expObj in experimentObjList:
+                    smallObj = {}
+                    smallObj["accuracies"] = []
+                    if len(expObj["accuracies"]) > 0:
+                        for acc in expObj['accuracies']:
+                            if acc["status"] == 2:
+                                smallObj["accuracies"].append({"datasetName":acc["datasetName"],"accuracy":acc["accuracy"]})
+                    smallObj["experimentName"]= expObj["experimentName"]
+                    smallObj["layers"]= expObj["numOfLayers"]
+                    smallObj["steps"]= expObj["numOfSteps"]
+                    smallObj["learningRate"]= expObj["learningRate"]
+                    # if "status" in expObj.keys() and expObj["status"] == 2:
+                    #     smallObj["accuracy"]= expObj["accuracy"]
+                    if len(smallObj["accuracies"])>0:
+                        finalObj["AllExperiments"].append(smallObj)
+            result = {"status":"ok","body" :finalObj}
+    else:
+        result = {'status': 'ERROR', 'message': 'Model doesnot exist'}
+    return result
+
+def getAllAccuraciesExperiments(modelName, experimentName,experimentCollection, modelCollection):
+    if checkIfModelExists(modelName,modelCollection):
+        finalObj = {
+            "bestaccuracy":0,
+            "ExperimentName":None,
+        }
+        experimentObjList = experimentCollection.find_one({
+            "modelName": modelName,
+            "experimentName": experimentName
         })
-        for expObj in experimentObjList:
-            smallObj = {}
-            smallObj["accuracies"] = []
-            if len(expObj["accuracies"]) > 0:
-                for acc in expObj['accuracies']:
-                    if acc["status"] == 2:
-                        smallObj["accuracies"].append({"datasetName":acc["datasetName"],"accuracy":acc["accuracy"]})
-            smallObj["experimentName"]= expObj["experimentName"]
-            smallObj["layers"]= expObj["numOfLayers"]
-            smallObj["steps"]= expObj["numOfSteps"]
-            smallObj["learningRate"]= expObj["learningRate"]
-            if "status" in expObj.keys() and expObj["status"] == 2:
-                smallObj["accuracy"]= expObj["accuracy"]
-            finalObj["AllExperiments"].append(smallObj)
-    return finalObj
-
-def getAllAccuraciesExperiments(modelName, experimentName,experimentCollection):
-    finalObj = {
-        "bestaccuracy":0,
-        "ExperimentName":None,
-    }
-    experimentObjList = experimentCollection.find_one({
-        "modelName": modelName,
-        "experimentName": experimentName
-    })
-    best_accuracy =0
-    datasetName = None
-    for accuracy in experimentObjList["accuracies"]:
-        if accuracy["accuracy"] > best_accuracy:
-            best_accuracy = accuracy["accuracy"]
-            datasetName = accuracy["datasetName"]
-    finalObj["bestaccuracy"] = best_accuracy
-    finalObj["ExperimentName"] = experimentName
-    finalObj["datasetName"] = datasetName
-    return finalObj
-
+        best_accuracy =0
+        datasetName = None
+        for accuracy in experimentObjList["accuracies"]:
+            if accuracy["accuracy"] > best_accuracy:
+                best_accuracy = accuracy["accuracy"]
+                datasetName = accuracy["datasetName"]
+        finalObj["bestaccuracy"] = best_accuracy
+        finalObj["ExperimentName"] = experimentName
+        finalObj["datasetName"] = datasetName
+        result = {"status":"ok","body": finalObj}
+    else:
+        result = {'status': 'ERROR', 'message': 'Model doesnot exist'}
+    return result
 
 def createDataset(modelName,datasetName, modelCollection, datasetCollection):
+
     objectToInsert = {
                       'modelName':modelName,
                       'datasetName' : datasetName,
-                      'trainingImagesPath':config.get(config.TRAININGIMAGESPATH)+str(modelName)+'/'+str(datasetName),
+                      'trainingImagesPath':config.get(config.DATASETIMAGESPATH)+str(modelName)+'/'+str(datasetName),
                       'numberOfTrainingImages':0,
                       'imageNames' : []
                       }
     try:
-        datasetCollection.insert_one(objectToInsert)
-        return {'status': 'ok', 'message': 'Dataset Created'}
+        if datasetCollection.find_one({"modelName":modelName,"datasetName":datasetName}) is not None:
+            result = {'status': 'ERROR', 'message': 'dataset with same name already exists'}
+        else:
+            if not os.path.isdir(config.get(config.DATASETIMAGESPATH)+str(modelName)):
+                os.mkdir(config.get(config.DATASETIMAGESPATH)+str(modelName))
+            datasetCollection.insert_one(objectToInsert)
+            result = {'status': 'ok', 'message': 'Dataset Created'}
     except Exception as e:
-        return {'status': 'ERROR', 'message': 'Model with same name already exists'}
+        result = {'status': 'ERROR', 'message': 'Model with same name already exists'}
+    return result
+
+# def copydatasetAtoB(datasetName,datasetNameOld,datasetCollection):
+#     datasetNew = datasetCollection.find_one({"datasetName":datasetName})
+#     datasetOld = datasetCollection.find_one({"datasetName":datasetNameOld})
+#     for imageName in dat

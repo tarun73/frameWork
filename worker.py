@@ -33,69 +33,78 @@ def updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentNa
 def handleCompletion(ch,method):
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
+def handleFailure(ch,method):
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+
 def doTraining(ch, method, properties, body):
     dataFromQueue = json.loads(body)
-    modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
-                                                       config.get(config.PORT),
-                                                       config.get(config.DATABASENAME),
-                                                       config.get(config.MODELCOLLECTION))
-    experimentCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
-                                                       config.get(config.PORT),
-                                                       config.get(config.DATABASENAME),
-                                                       config.get(config.EXPERIMENTCOLLECTION))
-    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
-                                                       config.get(config.PORT),
-                                                       config.get(config.DATABASENAME),
-                                                       config.get(config.DATASETCOLLECTION))
-    modelName = dataFromQueue['modelName']
-    modelObj = modelCollection.find_one({"_id":modelName})
-    experimentName = dataFromQueue['experimentName']
-    expObj = experimentCollection.find_one({"modelName":modelName,
-                                            "experimentName":experimentName})
-    learningRate = str(expObj['learningRate'])
-    steps = str(expObj["numOfSteps"])
-    layers = str(expObj["numOfLayers"])
-    datasetName = None
-    if "datasetName" in dataFromQueue.keys() and dataFromQueue["datasetName"] is not None:
-        datasetName = dataFromQueue["datasetName"]
-        datasetObj = datasetCollection.find_one({"modelName":modelName,"datasetName":dataFromQueue["datasetName"]})
-        trainingImagesPath = datasetObj["trainingImagesPath"]
-    else:
-        trainingImagesPath = str(modelObj["trainingImagesPath"])
-    output = check_output(
-        ['python', 'train.py', '--i', learningRate, '--j', layers, '--k', steps, '--images', trainingImagesPath])
-    accuracy = output.split(',')[4][13:-2]
-    updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentName, modelCollection, experimentCollection, datasetName)
+    try:
+        modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                           config.get(config.PORT),
+                                                           config.get(config.DATABASENAME),
+                                                           config.get(config.MODELCOLLECTION))
+        experimentCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                           config.get(config.PORT),
+                                                           config.get(config.DATABASENAME),
+                                                           config.get(config.EXPERIMENTCOLLECTION))
+        datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                           config.get(config.PORT),
+                                                           config.get(config.DATABASENAME),
+                                                           config.get(config.DATASETCOLLECTION))
+        modelName = dataFromQueue['modelName']
+        modelObj = modelCollection.find_one({"_id":modelName})
+        experimentName = dataFromQueue['experimentName']
+        expObj = experimentCollection.find_one({"modelName":modelName,
+                                                "experimentName":experimentName})
+        learningRate = str(expObj['learningRate'])
+        steps = str(expObj["numOfSteps"])
+        layers = str(expObj["numOfLayers"])
+        datasetName = None
+        if "datasetName" in dataFromQueue.keys() and dataFromQueue["datasetName"] is not None:
+            datasetName = dataFromQueue["datasetName"]
+            datasetObj = datasetCollection.find_one({"modelName":modelName,"datasetName":dataFromQueue["datasetName"]})
+            trainingImagesPath = datasetObj["trainingImagesPath"]
+        else:
+            trainingImagesPath = str(modelObj["trainingImagesPath"])
+        output = check_output(
+            ['python', 'train.py', '--i', learningRate, '--j', layers, '--k', steps, '--images', trainingImagesPath])
+        accuracy = output.split(',')[4][13:-2]
+        updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentName, modelCollection, experimentCollection, datasetName)
 
-    print("updated experiment ", experimentName)
-    if "datasetName" in dataFromQueue.keys() and dataFromQueue["datasetName"] is not None:
-        experimentCollection.update({"modelName":modelName,
-                                    "experimentName":experimentName},{
-                                        "$pull":{
-                                            "accuracies":{
-                                                    "datasetName" : dataFromQueue["datasetName"]
+        print("updated experiment ", experimentName)
+        if "datasetName" in dataFromQueue.keys() and dataFromQueue["datasetName"] is not None:
+            # here we can save new experiments accuracy in  array and
+            experimentCollection.update({"modelName":modelName,
+                                        "experimentName":experimentName},{
+                                            "$pull":{
+                                                "accuracies":{
+                                                        "datasetName" : dataFromQueue["datasetName"]
+                                                }
                                             }
-                                        }
-                                    })
-        experimentCollection.update({"modelName":modelName,
-                                    "experimentName":experimentName},{
-                                        "$push":{
-                                            "accuracies":{
-                                                "datasetName":dataFromQueue["datasetName"],
+                                        })
+            experimentCollection.update({"modelName":modelName,
+                                        "experimentName":experimentName},{
+                                            "$push":{
+                                                "accuracies":{
+                                                    "datasetName":dataFromQueue["datasetName"],
+                                                    "status":2,
+                                                    "accuracy":accuracy
+                                                }
+                                            }
+                                        })
+        else:
+            experimentCollection.update({"modelName":modelName,
+                                        "experimentName":experimentName},{
+                                            "$set":{
                                                 "status":2,
-                                                "accuracy":accuracy
+                                                "accuracy": float(accuracy)
                                             }
-                                        }
-                                    })
-    else:
-        experimentCollection.update({"modelName":modelName,
-                                    "experimentName":experimentName},{
-                                        "$set":{
-                                            "status":2,
-                                            "accuracy": float(accuracy)
-                                        }
-                                    })
-    handleCompletion(ch,method)
+                                        })
+        handleCompletion(ch,method)
+    except:
+        handleFailure(ch,method)
+        pass
     print("completed experiment")
     return
 

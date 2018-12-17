@@ -5,6 +5,7 @@
   "datasetCollectionName":"datasets",
   "trainingImagesPath":"/home/tarunr/TrainingImages/",
   "testImagesPath":"/home/tarunr/TestImages/",
+  "datasetImagesPath":"/home/tarunr/datasets/",
   "host":"localhost",
   "port":27017,
   "pika_id":"admin",
