@@ -1,8 +1,0 @@
-1.Create a Model
-2.Create a dataset for model
-  -Add training images for the particular dataset
-3.Create an experiment
-4.Run default experiments on any dataset
-5.Run custom experiment on any dataset for the model
-6.Get best accuracy of overall model (combines all the datasets)
-7.Get all the accuracies

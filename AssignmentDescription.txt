@@ -1,0 +1,211 @@
+ASSUMPTIONS:
+1.ModelNames should be Unique
+2.Experiments are created for a particular model (cant be shared between models)
+3.Datasets are created for a particular model (cant be shared between models)
+4.Latest accuracy of an experiment for a particular dataset is stored.
+5.27 experiments are created by default and api to run them on different datasets is provided.
+
+DATABASE MODELS:
+models collection -
+{
+	"_id" : uniqueId
+	"bestExperimentName" :                       //best Experiment Result name based on accuracy
+	"numberOfTrainingImages" :                   //number of training images
+	"bestAccuracy" :                             //accuracy of best experiment
+	"bestDataset" :                              //best accuracy dataset
+	"trainingImagesPath" :                       //path where all the training images for the model are stored
+}
+
+experiments collection -
+{ "_id" : ObjectId("5c1714c9bdacfb591f7f726c"),
+"numOfSteps" : 1000,                              //Number of steps from input
+"modelName" : "model2",                           //model associated with
+"learningRate" : 0.001,                           //learning rate from input
+"accuracies" : [ {                                //array containing accuracies for different trainingdatasets
+             "status" : 2,                        //status of training
+             "datasetName" : "data2",             //datasetName
+             "accuracy" : "0.8382381150935184"    //accuracy after performing experiment with this dataset
+             },
+             {                                    //similar to above
+             "status" : 2,
+             "datasetName" : "data3",
+             "accuracy" : "0.2636134426264448" } ],
+"numOfLayers" : 1,                                //number of layers from input
+"experimentName" : "default_1",                   //experiment name from input
+}
+
+datasets collection -
+{
+	"_id" : ObjectId("5c1773dabdacfb4c65d00c93"),
+	"datasetName" : "data6",                                            //dataset name from input
+	"modelName" : "model5",                                             //model associated with
+	"numberOfTrainingImages" : 3,                                       //number of training images
+	"imageNames" : [                                                    //imageNames (these images are present in
+		"1.jpg",                                                                      model training images path
+		"2.jpg",
+		"4.jpg"
+	],
+	"trainingImagesPath" : "/home/tarunr/datasets/model5/data6"         //here we store symlinks for images for this dataset
+}
+
+=================================================================================================================
+
+
+APIS -----------
+
+/createModel  [GET]
+input - model_name
+return - {status: ok/ERROR, message: m}
+Description -
+Creates a model with given model, return error if already model name exists
+
+
+/createDataset [GET]
+input - model_name & dataset_name
+return - {status: ok/ERROR, message: m}
+Description -
+Creates a dataset associated with the model, return error if already dataset exists
+
+/createExperiment [GET]
+input - model_name
+        experiment_name
+        learning_rate
+        num_layers
+        num_steps
+return - {status: ok/ERROR, message: m}
+Description -
+Creates new experiment associated with the model, return error if experiment already exists
+
+/uploadTrainingImage [POST]
+input - model_name
+        file(image file)
+        dataset_name
+return - {'status': 'ok'/ERROR, 'message': 'Images added For training'/error string}
+Description -
+adds a local image to a dataset, return error if unknown error
+
+/uploadTrainingImages [GET]
+input - model_name
+        image_urls [list] maximum 3
+        dataset_name
+return - {'status': 'ok'/ERROR, 'message': 'Images added For training'/error string}
+Description -
+adds list of images from remoteserver to a dataset, return error if unknown error
+
+/train  [GET]
+input - model_name
+        experiment_name
+        dataset_name
+return - {'status': 'ok'/ERROR, 'message': 'training for exp started'/''no model or experiment or dataset exists'}
+Description -
+searches for the experiment, model and dataset,prepares the training data by
+making symlinks of images in a datasetfolder and adds it to the training queue
+return error if input parameters not found
+
+/runDefaultExperiments [GET]
+input - model_name
+        dataset_name
+return -{"status": "Ok", 'message': "training started on 27 experiments" }
+Description -
+inserts all the default experiments from [default_1 .. default_27] to the training queue in a similar
+fashion to the train api return error if unknown error
+
+/test  [POST]
+input - model_name
+        file (imagefile)
+return - {
+            "Status": "ok",
+            "body": {
+                "Experiment": "default_17",
+                "accuracy": "0.7325364548231516",
+                "layers": "4",
+                "learningRate": "0.01",
+                "steps": "2000"
+            }
+        }
+        {"Status":"ERROR","message":"no experiment done yet"}
+Description -
+save the input image file, get the best experiment parameters from the model and run test.py
+with the parameters return error if no experiment results found.
+
+/allAccuracies [GET]
+input - model_name
+        experiment_name [optional]
+return - {
+            "body": {
+                "AllExperiments": [
+                    {
+                        "accuracies": [
+                            {
+                                "accuracy": "0.5592918734883807",
+                                "datasetName": "data1"
+                            },
+                            {
+                                "accuracy": "0.07713184466493017",
+                                "datasetName": "data2"
+                            }
+                        ],
+                        "experimentName": "custom",
+                        "layers": 4,
+                        "learningRate": 1,
+                        "steps": 5000
+                    },
+                                        {
+                        "accuracies": [
+                            {
+                                "accuracy": "0.5592918734883807",
+                                "datasetName": "data1"
+                            },
+                            {
+                                "accuracy": "0.07713184466493017",
+                                "datasetName": "data2"
+                            }
+                        ],
+                        "experimentName": "custom",
+                        "layers": 4,
+                        "learningRate": 1,
+                        "steps": 5000
+                    }
+                ]
+            },
+            "status": "ok"
+        }
+Description -
+takes model_name input and returns all the results of all the experiments conducted with different datasets in
+AllExperiments list. if experiment_name is given then all the results of the particular experiment are returned.
+return error if model_name or experiment_name not found.
+
+/bestAccuracy [GET]
+input - model_name
+        experiment_name [optional]
+return - {
+            "body": {
+                "bestDataset": "data1",
+                "bestExperiment": "default_17",
+                "bestaccuracy": "0.9977187378790441"
+            },
+            "status": "ok"
+        }
+Description -
+takes model_name and return the best result among all the experiments along with the dataset. if experiment_name
+is given then return the best accuracy for the specific experiment among different datasets.
+
+
+
+Deliverables Achieved:
+
+1.Create a new model
+2.Upload images for training the model
+3.Generate experiments with different parameters for model
+4.Run the train.py script with multiple parameters (3x3x3) 27 experiments
+5.Get the best result from each of the experiments
+6.Store the results from each of the experiments and select the best experiment (highest accuracy) along with the parameters used for the experiment and the accuracy for each experiment
+
+Image versioning
+
+1.Managing experiments for each dataset with different parameters
+2.Start training on any of the dataset
+
+unfinished -
+Image deduplication
+Managing different versions of datasets (not purely but in a crude way done)
