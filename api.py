@@ -1,11 +1,29 @@
 import config
 import os, json
-import pika
+import pika, urllib
 import constants as C
 from random import randint
 from subprocess import check_output
 
+def makeTrainingData(modelName,datasetName,modelCollection,datasetCollection):
+    modelObj = modelCollection.find_one({"_id":modelName})
+    trainingPathold = modelObj['trainingImagesPath']
+    dataObj = datasetCollection.find_one({"modelName":modelName,"datasetName":datasetName})
+    trainingPath = dataObj['trainingImagesPath']
+    if not os.path.isdir(trainingPathold):
+        os.mkdir(trainingPathold)
 
+    if not os.path.isdir(trainingPath):
+        os.mkdir(trainingPath)
+
+    for image in dataObj['imageNames']:
+        try:
+            if not os.path.exists(trainingPath+image):
+                os.symlink(trainingPathold+image,trainingPath+image)
+        except:
+            pass
+    print('done making new train set')
+    return
 
 def publishInQueue(ObjToPublish,channel,routingKey,delivery_mode):
     status = channel.basic_publish(exchange='',
@@ -16,17 +34,24 @@ def publishInQueue(ObjToPublish,channel,routingKey,delivery_mode):
                                   ))
     return status
 
-def makeQueueObject(modelName,experimentName):
-    return {"modelName":modelName,"experimentName":experimentName}
+def makeQueueObject(modelName,experimentName,datasetName):
+    return {"modelName":modelName,"experimentName":experimentName,"datasetName":datasetName}
 
-def trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel):
+def trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel,datasetCollection,datasetName=None):
     try:
-        queueObj = makeQueueObject(modelName,experimentName)
+        if datasetName is not None:
+            makeTrainingData(modelName,datasetName,modelCollection,datasetCollection)
+        queueObj = makeQueueObject(modelName,experimentName,datasetName)
         status = publishInQueue(queueObj, pikapublishChannel, C.TRAINING_QUEUE_NAME, delivery_mode=2)
         experimentCollection.update({"modelName":modelName,
                                      "experimentName":experimentName,
                                      },
                                     {
+                                        "$push":{
+                                            "accuracies": {"datasetName":datasetName,
+                                                           "status":1,
+                                                           "accuracy":0}
+                                        },
                                        "$set":{
                                         "status": 1
                                        }
@@ -65,24 +90,34 @@ def createModel(modelName, modelCollection, experimentCollection):
     except Exception as e:
         return {'status': 'ERROR', 'message': 'Model with same name already exists'}
 
-def insertTrainingImages(modelName,imageUrls,modelCollection):
-    #check if the model exists,
+def insertTrainingImages(modelName,imageUrls,modelCollection,datasetCollection,datasetName=None):
     try:
         obj = modelCollection.find_one({"_id":modelName})
-
+        trainingImagesPath = obj['trainingImagesPath']
+        numOfTrainingImages = obj['numberOfTrainingImages']
+        if not os.path.isdir(trainingImagesPath):
+            os.mkdir(trainingImagesPath)
+        for imageUrl in imageUrls:
+            imageSavePath = trainingImagesPath+str(numOfTrainingImages+1)+'.jpg'
+            image = urllib.URLopener()
+            image.retrieve(imageUrl,imageSavePath)
+            numOfTrainingImages+=1
+            if datasetName is not None:
+                datasetCollection.update({"datasetName": datasetName, "modelName": modelName},
+                                         {"$push": {"imageNames": str(numOfTrainingImages + 1) + '.jpg'}})
+        modelCollection.update({"_id":modelName},{"$set":{"numberOfTrainingImages":numOfTrainingImages}})
         return {'status': 'ok', 'message': 'Images added For training'}
     except Exception as e:
         print(e)
         return {'status':'ERROR', 'message':e}
 
-def insertTrainingImage(modelName,image,modelCollection):
+def insertTrainingImage(modelName,image,modelCollection,datasetCollection,datasetName=None):
     """
     :param modelName:
     :param image:
     :param modelCollection:
     :return:
     """
-    #check if model exists
     try:
         obj = modelCollection.find_one({"_id":modelName})
         trainingImagesPath = obj['trainingImagesPath']
@@ -94,12 +129,16 @@ def insertTrainingImage(modelName,image,modelCollection):
             '$inc': {
                 'numberOfTrainingImages': 1
             }}, upsert=False)
+        if datasetName is not None:
+            datasetCollection.update({"datasetName":datasetName,"modelName":modelName},
+                                     {"$push":{"imageNames":str(numOfTrainingImages+1)+'.jpg'}})
         return {'status': 'ok', 'message': 'Images added For training'}
     except Exception as e:
         print(e)
         return {'status': 'ERROR', 'message': e}
 
-def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSteps,modelCollection,experimentCollection):
+def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSteps,modelCollection,
+                     experimentCollection):
     """
 
     :param modelName:
@@ -125,6 +164,7 @@ def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSte
                     'numOfLayers': int(numOfLayers),
                     'modelName': modelName,
                     'accuracy': 0,
+                    'accuracies': [],
                     'status': 0
                 }
                 insertedObjId = experimentCollection.insert_one(expObj)
@@ -135,10 +175,10 @@ def createExperiment(modelName, experimentName,learningRate,numOfLayers,numOfSte
         print(e)
         return {'status': 'ERROR', 'message': e}
 
-def runDefaultExperiments(modelName,modelCollection,experimentCollection,pikapublishChannel):
+def runDefaultExperiments(modelName,modelCollection,experimentCollection,pikapublishChannel,datasetCollection,datasetName=None):
     for i in range (1,28):
         experimentName = 'default_'+str(i)
-        trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel)
+        trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel,datasetCollection,datasetName)
     return {"status": "Ok", 'message': "training started on 27 experiments" }
 
 def runTest(modelName,image,modelCollection,experimentCollection):
@@ -181,6 +221,8 @@ def getAllAccuracies(modelName, experimentCollection, modelCollection,bestAccura
     })
     finalObj["bestExperimentName"] = modelObj["bestExperimentName"]
     finalObj["bestaccuracy"] = modelObj["bestAccuracy"]
+    if "bestdatasetName" in modelObj.keys():
+        finalObj["bestdataSet"] = modelObj[""]
     if not bestAccuracyFlag:
         finalObj["AllExperiments"] = []
         experimentObjList = experimentCollection.find({
@@ -188,6 +230,11 @@ def getAllAccuracies(modelName, experimentCollection, modelCollection,bestAccura
         })
         for expObj in experimentObjList:
             smallObj = {}
+            smallObj["accuracies"] = []
+            if len(expObj["accuracies"]) > 0:
+                for acc in expObj['accuracies']:
+                    if acc["status"] == 2:
+                        smallObj["accuracies"].append({"datasetName":acc["datasetName"],"accuracy":acc["accuracy"]})
             smallObj["experimentName"]= expObj["experimentName"]
             smallObj["layers"]= expObj["numOfLayers"]
             smallObj["steps"]= expObj["numOfSteps"]
@@ -196,3 +243,17 @@ def getAllAccuracies(modelName, experimentCollection, modelCollection,bestAccura
                 smallObj["accuracy"]= expObj["accuracy"]
             finalObj["AllExperiments"].append(smallObj)
     return finalObj
+
+def createDataset(modelName,datasetName, modelCollection, datasetCollection):
+    objectToInsert = {
+                      'modelName':modelName,
+                      'datasetName' : datasetName,
+                      'trainingImagesPath':config.get(config.TRAININGIMAGESPATH)+str(modelName)+'/'+str(datasetName),
+                      'numberOfTrainingImages':0,
+                      'imageNames' : []
+                      }
+    try:
+        datasetCollection.insert_one(objectToInsert)
+        return {'status': 'ok', 'message': 'Dataset Created'}
+    except Exception as e:
+        return {'status': 'ERROR', 'message': 'Model with same name already exists'}

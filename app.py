@@ -18,26 +18,41 @@ def createModel():
     result = api.createModel(modelName, modelCollection, experimentCollection)
     return jsonify(result)
 
-@app.route('/uploadTrainingImages', methods=['POST'])
+@app.route('/uploadTrainingImages', methods=['GET'])
 def uploadImages():
     modelName = request.args.get(C.MODEL_NAME)
-    imageUrls = request.form.getlist('image_urls')
+    imageUrls = request.args.get('image_urls')
+    imageUrls = imageUrls.split(',')
+    datasetName = None
+    if request.args.get(C.DATASET_NAME):
+        datasetName = request.args.get(C.DATASET_NAME)
     modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
                                                        config.get(config.MODELCOLLECTION))
-    api.insertTrainingImages(modelName,imageUrls,modelCollection)
-    return
+    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.DATASETCOLLECTION))
+    result = api.insertTrainingImages(modelName,imageUrls,modelCollection,datasetCollection,datasetName)
+    return jsonify(result)
 
 @app.route('/uploadTrainingImage', methods=['POST'])
 def uploadImage():
     modelName = request.form.get(C.MODEL_NAME)
     image = request.files['file']
+    datasetName = None
+    if request.form.get(C.DATASET_NAME):
+        datasetName = request.form.get(C.DATASET_NAME)
     modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
                                                        config.get(config.MODELCOLLECTION))
-    result = api.insertTrainingImage(modelName,image,modelCollection)
+    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.DATASETCOLLECTION))
+    result = api.insertTrainingImage(modelName,image,modelCollection,datasetCollection,datasetName)
     return jsonify(result)
 
 @app.route('/createExperiment', methods=['GET'])
@@ -68,7 +83,9 @@ def createExperiment():
 def trainModel():
     modelName = request.args.get(C.MODEL_NAME)
     experimentName = request.args.get(C.EXPERIMENT_NAME)
-    # trainingSetNumber = request.args.get(C.TRAINING_SET_NUM)
+    datasetName = None
+    if request.args.get(C.DATASET_NAME):
+        datasetName = request.args.get(C.DATASET_NAME)
     modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
@@ -77,13 +94,20 @@ def trainModel():
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
                                                        config.get(config.EXPERIMENTCOLLECTION))
+    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.DATASETCOLLECTION))
     pikapublishChannel = rabbitmqDb.getRabbitmqPublishChannel(config.get(config.PIKA_HOST),C.TRAINING_QUEUE_NAME)
-    result = api.trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel)
+    result = api.trainTheModel(modelName,experimentName,modelCollection,experimentCollection,pikapublishChannel,
+                               datasetCollection,datasetName)
     return jsonify(result)
 
 @app.route('/runDefaultExperiments',methods=['GET'])
 def runDefaultExperiments():
     modelName = request.args.get(C.MODEL_NAME)
+    if request.args.get(C.DATASET_NAME):
+        datasetName = request.args.get(C.DATASET_NAME)
     modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
@@ -92,8 +116,12 @@ def runDefaultExperiments():
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
                                                        config.get(config.EXPERIMENTCOLLECTION))
+    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.DATASETCOLLECTION))
     pikapublishChannel = rabbitmqDb.getRabbitmqPublishChannel(config.get(config.PIKA_HOST),C.TRAINING_QUEUE_NAME)
-    result = api.runDefaultExperiments(modelName,modelCollection,experimentCollection,pikapublishChannel)
+    result = api.runDefaultExperiments(modelName,modelCollection,experimentCollection,pikapublishChannel,datasetCollection,datasetName)
     return jsonify(result)
 
 @app.route('/test',methods=['POST'])
@@ -140,6 +168,20 @@ def getBestAccuracy():
     result = api.getAllAccuracies(modelName, experimentCollection, modelCollection, bestAccuracyFlag)
     return jsonify(result)
 
+@app.route('/createDataset', methods=['Get'])
+def createDataset():
+    modelName = request.args.get(C.MODEL_NAME)
+    datasetName = request.args.get(C.DATASET_NAME)
+    modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.MODELCOLLECTION))
+    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.DATASETCOLLECTION))
+    result = api.createDataset(modelName,datasetName, modelCollection, datasetCollection)
+    return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='localhost',debug=True)

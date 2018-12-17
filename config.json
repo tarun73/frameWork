@@ -2,6 +2,7 @@
   "databaseName":"nanonets",
   "modelCollectionName":"models",
   "experimentCollectionName":"experiments",
+  "datasetCollectionName":"datasets",
   "trainingImagesPath":"/home/tarunr/TrainingImages/",
   "testImagesPath":"/home/tarunr/TestImages/",
   "host":"localhost",

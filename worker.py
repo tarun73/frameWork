@@ -6,25 +6,28 @@ from subprocess import check_output
 import mongoDb
 
 
-def updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentName, modelCollection, experimentCollection):
+def updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentName, modelCollection, experimentCollection,datasetName=None):
     #check the accuracy in model and change if high
     # add the accuracy to experimentcollection
-    expId = experimentCollection.update({
-        "experimentName":experimentName,
-        "modelName":modelName,
-        },{
-            "$set":{
-                "accuracy":float(accuracy)
-            }
-    })
-    if modelObj["bestAccuracy"] < accuracy:
-        modelCollection.update({"_id":modelName},
-            {
-                "$set":{
-                    "bestAccuracy":accuracy,
-                    "bestExperimentName":experimentName
-                }
-        })
+    if datasetName is not None:
+        if modelObj["bestAccuracy"] < accuracy:
+            modelCollection.update({"_id":modelName},
+                {
+                    "$set":{
+                        "bestAccuracy":accuracy,
+                        "bestExperimentName":experimentName,
+                        "trainingset":datasetName
+                    }
+            })
+    else:
+        if modelObj["bestAccuracy"] < accuracy:
+            modelCollection.update({"_id":modelName},
+                {
+                    "$set":{
+                        "bestAccuracy":accuracy,
+                        "bestExperimentName":experimentName,
+                    }
+            })
     return
 
 def handleCompletion(ch,method):
@@ -40,6 +43,10 @@ def doTraining(ch, method, properties, body):
                                                        config.get(config.PORT),
                                                        config.get(config.DATABASENAME),
                                                        config.get(config.EXPERIMENTCOLLECTION))
+    datasetCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.DATASETCOLLECTION))
     modelName = dataFromQueue['modelName']
     modelObj = modelCollection.find_one({"_id":modelName})
     experimentName = dataFromQueue['experimentName']
@@ -48,19 +55,46 @@ def doTraining(ch, method, properties, body):
     learningRate = str(expObj['learningRate'])
     steps = str(expObj["numOfSteps"])
     layers = str(expObj["numOfLayers"])
-    trainingImagesPath = str(modelObj["trainingImagesPath"])
+    datasetName = None
+    if "datasetName" in dataFromQueue.keys() and dataFromQueue["datasetName"] is not None:
+        datasetName = dataFromQueue["datasetName"]
+        datasetObj = datasetCollection.find_one({"modelName":modelName,"datasetName":dataFromQueue["datasetName"]})
+        trainingImagesPath = datasetObj["trainingImagesPath"]
+    else:
+        trainingImagesPath = str(modelObj["trainingImagesPath"])
     output = check_output(
         ['python', 'train.py', '--i', learningRate, '--j', layers, '--k', steps, '--images', trainingImagesPath])
-    #"{'i': '0.001', 'images': '/home/ubuntu/TrainingImages/', 'k': '2', 'j': '2', 'accuracy': 0.3420194533724594}\n"
     accuracy = output.split(',')[4][13:-2]
-    updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentName, modelCollection, experimentCollection)
+    updateAccuracyInDatabase(accuracy, modelObj, expObj, modelName, experimentName, modelCollection, experimentCollection, datasetName)
+
     print("updated experiment ", experimentName)
-    experimentCollection.update({"modelName":modelName,
-                                "experimentName":experimentName},{
-                                    "$set":{
-                                        "status":2
-                                    }
-                                })
+    if "datasetName" in dataFromQueue.keys() and dataFromQueue["datasetName"] is not None:
+        experimentCollection.update({"modelName":modelName,
+                                    "experimentName":experimentName},{
+                                        "$pull":{
+                                            "accuracies":{
+                                                    "datasetName" : dataFromQueue["datasetName"]
+                                            }
+                                        }
+                                    })
+        experimentCollection.update({"modelName":modelName,
+                                    "experimentName":experimentName},{
+                                        "$push":{
+                                            "accuracies":{
+                                                "datasetName":dataFromQueue["datasetName"],
+                                                "status":2,
+                                                "accuracy":accuracy
+                                            }
+                                        }
+                                    })
+    else:
+        experimentCollection.update({"modelName":modelName,
+                                    "experimentName":experimentName},{
+                                        "$set":{
+                                            "status":2,
+                                            "accuracy": float(accuracy)
+                                        }
+                                    })
     handleCompletion(ch,method)
     print("completed experiment")
     return
