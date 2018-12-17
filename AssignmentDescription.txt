@@ -1,9 +1,25 @@
+Summary-
+Create a model, add datasets and define experiments. when we run an experiment, an object is added to a
+queue, a worker listens on the queue and upon receiving a request runs the train.py script with corresponding
+parameters from the database and updates the database after the training result. we can query for results
+using the accuracies apis described below and get best accuracy, all accuracies at model and experiment level.
+
+Database - mongoDB
+queue manager - rabbitmq
+language - python
+
+postman collection contains all the apis -
+1.please refer to the api description regarding different inputs.
+2.please do let me know if there are any questions.
+
 ASSUMPTIONS:
 1.ModelNames should be Unique
 2.Experiments are created for a particular model (cant be shared between models)
 3.Datasets are created for a particular model (cant be shared between models)
 4.Latest accuracy of an experiment for a particular dataset is stored.
 5.27 experiments are created by default and api to run them on different datasets is provided.
+6.At any point results of the completed experiments are returned.
+
 
 DATABASE MODELS:
 models collection -
@@ -190,6 +206,7 @@ Description -
 takes model_name and return the best result among all the experiments along with the dataset. if experiment_name
 is given then return the best accuracy for the specific experiment among different datasets.
 
+===================================================================================================================
 
 
 Deliverables Achieved:
@@ -209,3 +226,15 @@ Image versioning
 unfinished -
 Image deduplication
 Managing different versions of datasets (not purely but in a crude way done)
+
+
+==================================================================================================================
+Extra -
+Example usage for some use cases other than direct api calls:
+Q1. Get best experiment result for a particular dataset?
+A. we can get the all the results of all the experiments and loop through for the best.
+
+Q2.How to do default experiments on a new dataset?
+A. -Add the new dataset
+   -import training images in batches of 3 or one by one from local
+   -call the run default experiments with the new dataset_name and model_name
