@@ -244,6 +244,27 @@ def getAllAccuracies(modelName, experimentCollection, modelCollection,bestAccura
             finalObj["AllExperiments"].append(smallObj)
     return finalObj
 
+def getAllAccuraciesExperiments(modelName, experimentName,experimentCollection):
+    finalObj = {
+        "bestaccuracy":0,
+        "ExperimentName":None,
+    }
+    experimentObjList = experimentCollection.find_one({
+        "modelName": modelName,
+        "experimentName": experimentName
+    })
+    best_accuracy =0
+    datasetName = None
+    for accuracy in experimentObjList["accuracies"]:
+        if accuracy["accuracy"] > best_accuracy:
+            best_accuracy = accuracy["accuracy"]
+            datasetName = accuracy["datasetName"]
+    finalObj["bestaccuracy"] = best_accuracy
+    finalObj["ExperimentName"] = experimentName
+    finalObj["datasetName"] = datasetName
+    return finalObj
+
+
 def createDataset(modelName,datasetName, modelCollection, datasetCollection):
     objectToInsert = {
                       'modelName':modelName,

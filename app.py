@@ -168,6 +168,22 @@ def getBestAccuracy():
     result = api.getAllAccuracies(modelName, experimentCollection, modelCollection, bestAccuracyFlag)
     return jsonify(result)
 
+@app.route('/bestAccuracyexperiment',methods=['GET'])
+def getBestAccuracyExperiment():
+    modelName = request.args.get(C.MODEL_NAME)
+    experimentName = request.args.get(C.EXPERIMENT_NAME)
+    bestAccuracyFlag = True
+    modelCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.MODELCOLLECTION))
+    experimentCollection = mongoDb.getMongoCollectionClient(config.get(config.HOST),
+                                                       config.get(config.PORT),
+                                                       config.get(config.DATABASENAME),
+                                                       config.get(config.EXPERIMENTCOLLECTION))
+    result = api.getAllAccuraciesExperiments(modelName, experimentName,experimentCollection)
+    return jsonify(result)
+
 @app.route('/createDataset', methods=['Get'])
 def createDataset():
     modelName = request.args.get(C.MODEL_NAME)
