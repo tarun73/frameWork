@@ -222,7 +222,7 @@ def getAllAccuracies(modelName, experimentCollection, modelCollection,bestAccura
     finalObj["bestExperimentName"] = modelObj["bestExperimentName"]
     finalObj["bestaccuracy"] = modelObj["bestAccuracy"]
     if "bestdatasetName" in modelObj.keys():
-        finalObj["bestdataSet"] = modelObj[""]
+        finalObj["bestdataSet"] = modelObj["trainingset"]
     if not bestAccuracyFlag:
         finalObj["AllExperiments"] = []
         experimentObjList = experimentCollection.find({
